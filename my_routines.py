@@ -1,5 +1,5 @@
 
-__version__ = "0.5"
+__version__ = "0.6"
 '''
 0.1
 -- added imports() to check what and what has not been imported
@@ -12,16 +12,145 @@ __version__ = "0.5"
 -- added smooth function
 0.5
 -- added fullprint from http://stackoverflow.com/questions/1987694/print-the-full-numpy-array
+0.6
+-- added plot_grid()
 '''
 
 import numpy as np
 import os
+from scipy.stats import ks_2samp
 #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized from ipdb import set_trace as pause
 
 class empty(object):
     def __init__(self):
         pass
 
+from SYDOSU.smooth_c import smooth_c
+# from SYDOSU.plot_spec import main as _plot_spec
+import matplotlib as mpl
+import pylab as plt
+from SYDOSU.util import process_one, read_ts, freq_cut
+import glob
+
+def plot_grid(funcs, args, kwds, labels, xlabel, ylabel, n_rows=3, n_cols=3):
+    '''
+    creates a grid of plots
+    '''
+    mpl.style.use('jcz_paper_latex')
+
+    j = 0    
+    i = 0
+    row_index = 0
+    count = 0
+    for _i in xrange(len(funcs)):
+        for j in xrange(n_cols):
+            if j == 0 and row_index == 0:
+                fig, axes = mpl.pyplot.subplots(ncols=n_cols, nrows=n_rows, figsize=(12, 13), sharey='row', sharex='col')
+                fig.subplots_adjust(hspace=0.0, wspace=0.0)        
+                axes = axes.flatten()
+                
+            if j == n_cols//2:
+                _xlabel = True
+                _ylabel = False
+            else:
+                _xlabel = False
+                _ylabel = False
+            if j == 0:
+                _xlabel = False
+                _ylabel = False
+            if row_index == 1 and j == 0:
+                _ylabel = True
+                
+            if _ylabel:
+                kwd['ylabel'] = ylabel
+            else:
+                kwd['ylabel'] = ''
+            if _xlabel:
+                kwd['xlabel'] = xlabel
+            else:
+                kwd['xlabel'] = ''
+            kwd['ax'] = axes[i]
+            funcs[_i](*args[_i], **kwds[_i])
+            axes[i].text(0.6, 0.8, labels[_i], fontsize=15, weight='bold', transform=axes[i].transAxes)
+            
+            if row_index > 0 and row_index < n_rows:
+                yticks = axes[i].yaxis.get_major_ticks()
+                yticks[-1].label1.set_visible(False)
+            else:
+                yticks = axes[i].yaxis.get_major_ticks()
+                yticks[0].label1.set_visible(False)
+
+            i += 1
+            if (row_index == n_rows-1 and j == n_rows-1) or (_i == len(funcs)-1 and j == n_cols-1):
+                row_index=0
+                i = 0
+                j = 0
+                plt.savefig('three_spec_'+str(count)+'.png', format='png')
+                plt.clf()
+                count += 1
+
+            elif j == n_cols-1:
+                j = 0
+                row_index += 1
+            else:
+                j += 1
+
+
+
+
+        
+
+
+
+
+    
+def ks_test(a,b):
+    '''
+    gives per cent confidence at which the two distributions, a and b, are inconsistent. Lower means more different and higher means more similar
+    '''
+    return 100. - (ks_2samp(a, b))[1]*100.
+
+def str_ind(array, st, get_bool=False):
+    '''
+    returns the indices in <array> that contains <st>                                                                     
+    Inputs                                                                                                                
+    array : ndarray                                                                                                       
+    st : str                         
+    [ get_bool : bool ]
+     if True, returns a boolean array of the same length as <array>, instead of an index array with a length not necessarily equal to the length of <array>. Default False.
+    Outputs                                                                                                               
+    idx : ndarray                                                                                                         
+    containing indices corresponding to <array> that have <st> in them                                                    
+    Notes
+     will interpret elements in the passed array that are not strings as strings.
+    '''
+
+    if get_bool:
+        indices = [True if st in str(x) else False for i,x in enumerate(array)]
+    else:
+        indices = [i for i,x in enumerate(array) if st in str(x)]
+    # JCZ 160118
+    # changed this to be a numpy array instead of list
+    return np.array(indices)
+
+def add_header(header, file):
+    '''
+    adds a header to an existing csv / ASCII file.
+    Inputs
+    header : str
+     header that DOES NOT END IN \n -- this will be added automatically by add_header().
+    file : str
+     file that will be re-written
+    
+    '''
+    with open(file, "r+") as f:
+        #Read complete data of CSV file
+        old = f.read()
+        #Get cursor to start of file
+        f.seek(0)
+        #Write header and old data to file.
+        f.write(header+ "\n" + old)
+    return
 
 import types
 def fullprint(*args, **kwargs):
@@ -32,6 +161,42 @@ def fullprint(*args, **kwargs):
   pprint(*args, **kwargs)
   numpy.set_printoptions(**opt)
 
+def add_errors(combined, combined_base, use_g_to_v=False, xs=None, es=None):
+    '''
+    add errors to the quantities according to their formal errors, assuming Gaussian errors
+    Inputs
+    combined : array that is modified in place by adding errors to columns specified in <xs> and <es>, based on mean values from combined_base
+    combined_base : pd df
+     for the keys in <xs>, <combined> columns will be replace by combined[xs] = combined_base[xs] + np.random.normal(loc=0.0, scale= combined_base[es])
+    Outputs
+    combined
+    '''
+    # add errors  according to the reported errors for MC analysis
+    # things to add errors to
+    # JCZ 201016
+    # perturb JHK, as well...
+    if use_g_to_v and (xs is None and es is None):
+        xs = ['BTmag', 'VTmag', 'gmag', 'rmag', 'imag', 'numax', 'dnu', 'TEFF_COR', 'A_V', 'FE_H_ADOP_COR', 'jmag', 'hmag', 'kmag']
+        # their error columns
+        es = ['e_BTmag', 'e_VTmag', 'e_gmag', 'e_rmag', 'e_imag', 'numax_sig', 'dnu_sig', 'TEFF_COR_ERR', 'e_A_V', 'FE_H_ADOP_COR_ERR', 'e_jmag', 'e_hmag', 'e_kmag']
+    elif (xs is None and es is None):
+        xs = ['BTmag', 'VTmag', 'numax', 'dnu', 'TEFF_COR', 'A_V', 'jmag', 'hmag', 'kmag', 'FE_H_ADOP_COR', 'jmag', 'hmag', 'kmag']
+        # their error columns
+        es = ['e_BTmag', 'e_VTmag', 'numax_sig', 'dnu_sig', 'TEFF_COR_ERR', 'e_A_V', 'e_jmag', 'e_hmag', 'e_kmag', 'FE_H_ADOP_COR_ERR', 'e_jmag', 'e_hmag', 'e_kmag']
+    
+    N = len(combined)
+    # JCZ 290317
+    # don't need to copy it
+    # _combined = combined.copy()
+    for x,e in zip(xs, es):
+        
+        try:
+            combined[x] = combined_base[x] + np.random.normal(loc=0., scale=combined_base[e], size=N)
+        except ValueError:
+            print 'encountered ValueError for {} item.'.format(x)
+    return combined
+
+  
 def incremental_std(arr):
     # incrementally calculated std by way of keeping track of 
     # meansq : \sum_i \langle x_i \rangle ^2
@@ -49,10 +214,36 @@ def incremental_std(arr):
         # c += 1.
         # meansq[j+offset] = meansq[j+offset]*(c-1.)/c + np.sum(amps[stride*j:-1:onewrap])/c
         # sqmean[j+offset] = sqmean[j+offset]*(c-1.)/c + np.sum(amps[stride*j:-1:onewrap]**2)/c
-            
+        pass    
     std = np.sqrt(np.array(sqmean - meansq))
     return 9999
 
+def DM2d(DM):
+    '''
+    given a distance modulus, returns distance in pc
+    '''
+
+    return 10.**(1. + DM/5.0)
+
+def DM_err2d_err(DM, DM_err):
+    '''
+    returns error on distance, given DM and DM_err
+    Inputs
+    DM : float
+     distance modulus
+    DM_err : float
+     error on distance modulus
+    Outputs
+    (d, d_err) : tuple of float
+     distance and error on distance (pc)
+    '''
+    return np.log(10.0)/5.0*DM_err*DM2d(DM)
+def d2DM(d):
+    '''
+    given a distance in pc, returns distance modulus
+    '''
+
+    return 5.*np.log10(d) - 5.
 def imports():
     '''
     returns imported modules
@@ -96,6 +287,54 @@ def p2f(p):
 def isinfnan(x):
 
     return np.logical_or((np.isinf(x)), (np.isnan(x)))
+
+def delete_func(x, y=None, ind=False, fill=None, full_ind=False, f1=lambda x: False, f2=lambda x: False):
+    '''
+    Returns an array without the values that satisfy either of the functions passed, f1 and f2. Optionally can replace these entries with a fill factor, <fill>.
+    Full ind : bool
+     if true, returns a boolean array of the same shape as input array, to be contrasted with the ind option, which returns an int ndarray of
+     length equal to or less than input array.
+    f1 : func
+     One of two functions that can be specified. If an element of x or y is True, then it will be deleted (or its index will not be in the result when ind or full_ind is True). Default lambda x: False (i.e., return everything).
+    f2 : func
+     One of two functions that can be specified. If an element of x or y is True, then it will be deleted (or its index will not be in the result when ind or full_ind is True). Default lambda x: False (i.e., return everything).
+
+    Notes
+    General version of delete_inf_nan with f1=np.isinf and f2=np.isnan
+    '''
+    if fill is not None:
+        if y is not None:
+            a = np.where((f1(y)) | (f2(y)))[0]
+        else:
+            a = np.where((f1(x)) | (f2(x)))[0]
+        if ind:
+            return a
+        x[a] = fill
+        
+        if y is not None:
+            y[a] = fill
+            return (x, y)
+        else:
+            return x
+        
+
+    if y is not None:
+        a = np.where((~f1(y)) & (~f2(y)))[0]
+    else:
+        a = np.where((~f1(x)) & (~f2(x)))[0]
+    if ind:
+        return a
+
+
+    if full_ind:
+        return f1(x) | f2(x)
+
+    if y is not None:
+        return (x[a], y[a])
+    else:
+        return x[a]
+
+
 def delete_inf_nan(x, y=None, ind=False, fill=None, full_ind=False):
     '''
     Returns an array without the values that are NaN or Inf. Optionally can replace these entries with a fill factor, <fill>.
@@ -222,8 +461,25 @@ def smooth(raw, w, type='boxcar'):
 
 def sigma_to_percent(sigma):
     '''
-    uses z-score to convert to percent
+    uses z-score to convert to fraction
     '''
     if 'norm' not in imports():
-        import scipy.stats.norm as norm
-    return norm(sigma)*2. -1.
+        import scipy.stats
+        
+    return (scipy.stats.norm.cdf(sigma)*2.) - 1.0
+
+def sig_diff(x, y, xerr, yerr):
+    '''
+    returns significance of difference in units of sigma for two measurements with errors
+    <xerr> and <yerr>, assuming Gaussianity.
+    Inputs
+    x : float
+    y : float
+    xerr : float
+    yerr : float
+    Outputs
+    diff : float
+     in units of \sigma = \sqrt{xerr^2 + yerr^2}
+    '''
+    diff = np.abs(x-y)/np.sqrt(xerr**2 + yerr**2)
+    return diff
