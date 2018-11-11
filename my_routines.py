@@ -1,6 +1,8 @@
 from __future__ import print_function
 __version__ = "0.7"
 '''
+(C) Joel C. Zinn 2018
+zinn.44@osu.edu
 0.1
 -- added imports() to check what and what has not been imported
 -- then use this in new function sigma_to_percent which converts z-scores into percentages.

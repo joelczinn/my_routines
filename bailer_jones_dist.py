@@ -1,6 +1,9 @@
 '''
-given an input L, parallax, and parallax error, will return the mode of the posterior for r.
-based on the method from Bailer-Jones 2015.
+(C) Joel C. Zinn 2018
+zinn.44@osu.edu
+
+Given an input L, parallax, and parallax error, will return the mode of the posterior for r.
+Based on the method from Bailer-Jones 2015.
 '''
 
 import numpy as np
