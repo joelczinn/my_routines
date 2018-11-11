@@ -1,2 +1,2 @@
 # util
-Useful scripts
+Useful scripts, including Bailer-Jones distances
