@@ -1,5 +1,5 @@
-
-__version__ = "0.6"
+from __future__ import print_function
+__version__ = "0.7"
 '''
 0.1
 -- added imports() to check what and what has not been imported
@@ -14,29 +14,102 @@ __version__ = "0.6"
 -- added fullprint from http://stackoverflow.com/questions/1987694/print-the-full-numpy-array
 0.6
 -- added plot_grid()
+0.7
+-- added radec2ellb(), added fits2pd
 '''
 
+import pyfits
+import pandas as pd
 import numpy as np
 import os
 from scipy.stats import ks_2samp
-#condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized from ipdb import set_trace as pause
+
+# JCZ 111118
+# commented this out
+# from SYDOSU.smooth_c import smooth_c
+
+import matplotlib as mpl
+import pylab as plt
+# JCZ 311018
+# commented this out.
+# from SYDOSU.util import process_one, read_ts, freq_cut
+import glob
 
 class empty(object):
     def __init__(self):
         pass
 
-from SYDOSU.smooth_c import smooth_c
-# from SYDOSU.plot_spec import main as _plot_spec
-import matplotlib as mpl
-import pylab as plt
-from SYDOSU.util import process_one, read_ts, freq_cut
-import glob
+def fits2pd(fitsfile):
+    '''
+    given an inputs fits file, will return pandas dataframe of that data.
+    Inputs
+    fitsfile : str
+     fits file with at least a column called <match_on> (default 'epic'). Assumes only has on HUD
+    Outputs
+    fits_df : pd DataFrame
+     pd DataFrame
+    '''
+    fits = pyfits.open(fitsfile)[1].data
+    dict = {}
+    for key in fits.names:
+        # JCZ 070817
+        # should not affect normal operations, but will successfully add data with more than one dimension.
+        entry = fits.field(key).byteswap().newbyteorder()
+        entry_dim = len(entry.shape)
+        n_dim = entry.shape[np.argsort(entry.shape)[0]]
+        dim_suffixes = np.arange(n_dim).astype(str)
+        # JCZ 251017
+        # for some reason now that i have added lengths to string columns, there are some that have no dimension? so need to skip over those...
+        try:
+            dim_suffixes[0] = ''
+        except:            
+            continue
+
+        # add the dimensions one-by-one, along the short dimension -- for the case of two dimensions. for more dimensions, the array is simply flattened
+        if entry_dim > 1 and entry_dim < 3:
+
+            for dim, suffix in zip(range(n_dim), dim_suffixes):
+                print('could not add {} to the DataFrame because it had multiple dimensions. breaking it up in to {} entries, instead...'.format(key, np.min(entry.shape)))
+                print('adding entry {}'.format(key+suffix))
+                if np.argsort(entry.shape)[0] == 0:
+                    dict[key+suffix] = entry[dim, :]
+                else:
+                    dict[key+suffix] = entry[:, dim]
+        elif entry_dim == 1:
+            dict[key] = entry
+    fits_df = pd.DataFrame(dict)
+    return fits_df
+
+def radecellb(ra, dec):
+    '''
+    converts ra and dec into ell and b
+    '''
+    from astropy.coordinates import ICRS, Galactic, FK4, FK5
+    from astropy.coordinates import SkyCoord
+    import astropy.units as u
+    c = SkyCoord(frame=ICRS, ra=ra*u.degree, dec=dec*u.degree)
+    c = c.transform_to(frame=Galactic)
+    return c.l.value, c.b.value
+
+def radeclonlat(ra, dec):
+    '''
+    converts ra and dec into ecliptic lon and lat
+    '''
+    from astropy.coordinates import ICRS, Galactic, FK4, FK5, HeliocentricTrueEcliptic
+    from astropy.coordinates import SkyCoord
+    import astropy.units as u
+    c = SkyCoord(frame=ICRS, ra=ra*u.degree, dec=dec*u.degree, distance=1000*u.kpc)
+    c = c.transform_to(frame=HeliocentricTrueEcliptic)
+    return c.lon.value, c.lat.value
 
 def plot_grid(funcs, args, kwds, labels, xlabel, ylabel, n_rows=3, n_cols=3):
     '''
     creates a grid of plots
     '''
-    mpl.style.use('jcz_paper_latex')
+    try:
+        mpl.style.use('jcz_paper_latex')
+    except:
+        print 'could not load jcz_paper_latex style file. will not use it.'
 
     j = 0    
     i = 0
@@ -193,30 +266,30 @@ def add_errors(combined, combined_base, use_g_to_v=False, xs=None, es=None):
         try:
             combined[x] = combined_base[x] + np.random.normal(loc=0., scale=combined_base[e], size=N)
         except ValueError:
-            print 'encountered ValueError for {} item.'.format(x)
+            print('encountered ValueError for {} item.'.format(x))
     return combined
 
   
-def incremental_std(arr):
-    # incrementally calculated std by way of keeping track of 
-    # meansq : \sum_i \langle x_i \rangle ^2
-    # sqmean : \sum_i \langle x_i^2 \rangle
-    # and then use
-    # \sigma = \sqrt{sqmean - meansq}
+# def incremental_std(arr):
+#     # incrementally calculated std by way of keeping track of 
+#     # meansq : \sum_i \langle x_i \rangle ^2
+#     # sqmean : \sum_i \langle x_i^2 \rangle
+#     # and then use
+#     # \sigma = \sqrt{sqmean - meansq}
 
     
-    std = []
-    meansq = 0.
-    sqmean = 0.
-    c = 0.
+#     std = []
+#     meansq = 0.
+#     sqmean = 0.
+#     c = 0.
     
-    for j in range(n_bins):
-        # c += 1.
-        # meansq[j+offset] = meansq[j+offset]*(c-1.)/c + np.sum(amps[stride*j:-1:onewrap])/c
-        # sqmean[j+offset] = sqmean[j+offset]*(c-1.)/c + np.sum(amps[stride*j:-1:onewrap]**2)/c
-        pass    
-    std = np.sqrt(np.array(sqmean - meansq))
-    return 9999
+#     for j in range(n_bins):
+#         # c += 1.
+#         # meansq[j+offset] = meansq[j+offset]*(c-1.)/c + np.sum(amps[stride*j:-1:onewrap])/c
+#         # sqmean[j+offset] = sqmean[j+offset]*(c-1.)/c + np.sum(amps[stride*j:-1:onewrap]**2)/c
+#         pass    
+#     std = np.sqrt(np.array(sqmean - meansq))
+#     return 9999
 
 def DM2d(DM):
     '''
@@ -265,6 +338,7 @@ def imports():
 #     does not work on multiple files!
 #     '''
 #     return os.path.join(os.
+
 def ang2p(ang):
     return 2.*np.pi/ang
 
@@ -384,20 +458,6 @@ def n_elements(array):
         return array.shape[0]
     return 0
 
-def plot(x, y=None):
-    '''
-    Automatically shows a plot, with interactive window on
-    '''
-    #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized import pylab as plt
-    if y is not None:
-        #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized plt.plot(x,y); plt.ion(); plt.show()
-#condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized pause()
-        pass
-    else:
-        #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized plt.plot(x); plt.ion(); plt.show()
-        pass
-#condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized #condorized pause()
-
 def find_nearest_ind(array, value):
     '''
     taken from unutbu http://stackoverflow.com/questions/2566412/find-nearest-value-in-numpy-array
@@ -429,10 +489,10 @@ def smooth(raw, w, type='boxcar'):
     sm = raw.copy()
 
     if type == 'boxcar':
-        print w % 2 > 0
+        print(w % 2 > 0)
         if not w % 2 > 0:
             w = w - 1
-            print 'changed w from {} to {}.'.format(w+1, w)
+            print('changed w from {} to {}.'.format(w+1, w))
         inds = np.linspace(w, N-w, num=N-2*w+1)
         w = int(w)-2
 
@@ -458,6 +518,12 @@ def smooth(raw, w, type='boxcar'):
 
     return sm
 
+def perc2sigma(perc):
+    '''                                                                                                               
+    convert percent to sigma, assuming normality
+    '''
+    from scipy import stats
+    return stats.norm.interval(perc/100., loc=0.0, scale=1.0)[1]
 
 def sigma_to_percent(sigma):
     '''
