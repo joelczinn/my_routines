@@ -21,6 +21,8 @@ def main(L, plx, plx_err):
     Outputs
     r : float | ndarray
      estimate for the distance, which would, if plx_err = 0., be 1/plx.
+    Notes:
+     All the inputs must be in the same units (i.e., if L is in kpc, plx and plx_err need to be in mas).
     '''
     if type(plx) != type(plx_err):
         print('plx is not the same type as plx_err. Both must either be float or ndarray.')
@@ -275,6 +277,7 @@ def draw(L, _plx, _plx_err, _r_lim, debug=False, u=None):
             logr_mode = np.log(main(L,plx, plx_err))
             norm = p(logr_mode, L, plx, plx_err)/np.exp(logr_mode)
             if debug:
+                import pylab as plt
                 plt.clf()
                 for _x in np.log(x):
                     # this is the difference between the desired probability and the cumulative probability distribution at _x (log(r))
