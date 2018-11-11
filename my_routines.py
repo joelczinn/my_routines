@@ -109,7 +109,7 @@ def plot_grid(funcs, args, kwds, labels, xlabel, ylabel, n_rows=3, n_cols=3):
     try:
         mpl.style.use('jcz_paper_latex')
     except:
-        print 'could not load jcz_paper_latex style file. will not use it.'
+        print('could not load jcz_paper_latex style file. will not use it.')
 
     j = 0    
     i = 0
