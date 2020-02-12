@@ -20,7 +20,7 @@ zinn.44@osu.edu
 -- added radec2ellb(), added fits2pd
 '''
 
-import pyfits
+from astropy.io import fits
 import pandas as pd
 import numpy as np
 import os
@@ -50,7 +50,7 @@ def process_one(file, verbose=False, kepler=False, drop_duplicates=True, match_o
      If True, will make epic to be the index of the dataframe.Default False. NOT COMPATIBLE YE TWTH COMBINE_TABLES, SO IT'S CURRENTLY NOT EVEN POSSIBLE FOR THIS TO BE DONE FROM A CALL TO COMBINE_TABLES. WOULD HAVE TO MANUALLY CHANGE THE COMBINE_TABLES CODE TO MAKE THAT POSOSIBLE. !!!
     [ drop_no_epic : bool ]
      if True, will not return rows for which no EPIC could be found.
-    
+
     '''
     # put the whitespace separator last in case there are issues with some columns not being filled in
     # JCZ 221017
@@ -61,7 +61,7 @@ def process_one(file, verbose=False, kepler=False, drop_duplicates=True, match_o
             if len(one.keys()) > 1:
                 if verbose:
                     print('{} read successfully'.format(file))
-            elif len(one.keys()) == 1:  
+            elif len(one.keys()) == 1:
                 one = pd.read_table(file, comment='#', sep=',', header=0)
             elif len(one.keys()) == 1:
                 one = pd.read_table(file, comment='#', sep='\|', header=0)
@@ -86,8 +86,8 @@ def process_one(file, verbose=False, kepler=False, drop_duplicates=True, match_o
                 else:
                     print('{} could not be read using , | or whitespace delimiters'.format(file))
 
-            
-                
+
+
     else:
         try:
             one = pd.read_table(file, comment='#', sep=sep, header=0)
@@ -95,7 +95,7 @@ def process_one(file, verbose=False, kepler=False, drop_duplicates=True, match_o
             print('{} could not be read using the \'{}\' delimiter'.format(file,sep))
     # JCZ 070317
     # added this as an option to be kepler-friendly or not. jie's KICs don't prepend 00, so there are issues...
-    
+
     if kepler:
         func = lambda x : (re.search('([0-9]{6,10})', x).group(1))
     else:
@@ -122,7 +122,7 @@ def process_one(file, verbose=False, kepler=False, drop_duplicates=True, match_o
             except:
                 pass
             if ((one[k]).dtype != 'int64' and (one[k]).dtype != 'float64') and found is False:
-                
+
                 one[k] = one[k].apply(func).astype(int)
             # merge one and pipeline output table (flags_df) so that if they are different sizes, one = one[one['pipeline_rating'] > 0] will work
             # JCZ 071118
@@ -152,9 +152,9 @@ def process_one(file, verbose=False, kepler=False, drop_duplicates=True, match_o
         one = one.rename(columns={0:'epic'})
         one['epic'] = one['epic'].__array__().astype(int)
     # except:
-        
+
     #     if 'epic' not in one.keys():
-        
+
     #         print 'could not find file or EPIC column for {}...'.format(file)
     #     # if epic does exist as a field then it must be converted to an int
     #     else:
@@ -179,7 +179,7 @@ def process_one(file, verbose=False, kepler=False, drop_duplicates=True, match_o
         one.set_index(match_on, inplace=True, drop=False)
     return one
 
-    
+
 def fits2pd(fitsfile):
     '''
     given an inputs fits file, will return pandas dataframe of that data.
@@ -190,12 +190,13 @@ def fits2pd(fitsfile):
     fits_df : pd DataFrame
      pd DataFrame
     '''
-    fits = pyfits.open(fitsfile)[1].data
+    f = fits.open(fitsfile)
+    fitsdata = f[1].data
     dict = {}
-    for key in fits.names:
+    for key in fitsdata.names:
         # JCZ 070817
         # should not affect normal operations, but will successfully add data with more than one dimension.
-        entry = fits.field(key).byteswap().newbyteorder()
+        entry = fitsdata.field(key).byteswap().newbyteorder()
         entry_dim = len(entry.shape)
         n_dim = entry.shape[np.argsort(entry.shape)[0]]
         dim_suffixes = np.arange(n_dim).astype(str)
@@ -203,7 +204,7 @@ def fits2pd(fitsfile):
         # for some reason now that i have added lengths to string columns, there are some that have no dimension? so need to skip over those...
         try:
             dim_suffixes[0] = ''
-        except:            
+        except:
             continue
 
         # add the dimensions one-by-one, along the short dimension -- for the case of two dimensions. for more dimensions, the array is simply flattened
@@ -263,7 +264,7 @@ def plot_grid(funcs, args, kwds, labels, xlabel, ylabel, n_rows=3, n_cols=3):
     except:
         print('could not load jcz_paper_latex style file. will not use it.')
 
-    j = 0    
+    j = 0
     i = 0
     row_index = 0
     count = 0
@@ -271,9 +272,9 @@ def plot_grid(funcs, args, kwds, labels, xlabel, ylabel, n_rows=3, n_cols=3):
         for j in xrange(n_cols):
             if j == 0 and row_index == 0:
                 fig, axes = mpl.pyplot.subplots(ncols=n_cols, nrows=n_rows, figsize=(12, 13), sharey='row', sharex='col')
-                fig.subplots_adjust(hspace=0.0, wspace=0.0)        
+                fig.subplots_adjust(hspace=0.0, wspace=0.0)
                 axes = axes.flatten()
-                
+
             if j == n_cols//2:
                 _xlabel = True
                 _ylabel = False
@@ -285,7 +286,7 @@ def plot_grid(funcs, args, kwds, labels, xlabel, ylabel, n_rows=3, n_cols=3):
                 _ylabel = False
             if row_index == 1 and j == 0:
                 _ylabel = True
-                
+
             if _ylabel:
                 kwd['ylabel'] = ylabel
             else:
@@ -297,7 +298,7 @@ def plot_grid(funcs, args, kwds, labels, xlabel, ylabel, n_rows=3, n_cols=3):
             kwd['ax'] = axes[i]
             funcs[_i](*args[_i], **kwds[_i])
             axes[i].text(0.6, 0.8, labels[_i], fontsize=15, weight='bold', transform=axes[i].transAxes)
-            
+
             if row_index > 0 and row_index < n_rows:
                 yticks = axes[i].yaxis.get_major_ticks()
                 yticks[-1].label1.set_visible(False)
@@ -323,12 +324,12 @@ def plot_grid(funcs, args, kwds, labels, xlabel, ylabel, n_rows=3, n_cols=3):
 
 
 
-        
 
 
 
 
-    
+
+
 def ks_test(a,b):
     '''
     gives per cent confidence at which the two distributions, a and b, are inconsistent. Lower means more different and higher means more similar
@@ -337,15 +338,15 @@ def ks_test(a,b):
 
 def str_ind(array, st, get_bool=False):
     '''
-    returns the indices in <array> that contains <st>                                                                     
-    Inputs                                                                                                                
-    array : ndarray                                                                                                       
-    st : str                         
+    returns the indices in <array> that contains <st>
+    Inputs
+    array : ndarray
+    st : str
     [ get_bool : bool ]
      if True, returns a boolean array of the same length as <array>, instead of an index array with a length not necessarily equal to the length of <array>. Default False.
-    Outputs                                                                                                               
-    idx : ndarray                                                                                                         
-    containing indices corresponding to <array> that have <st> in them                                                    
+    Outputs
+    idx : ndarray
+    containing indices corresponding to <array> that have <st> in them
     Notes
      will interpret elements in the passed array that are not strings as strings.
     '''
@@ -366,7 +367,7 @@ def add_header(header, file):
      header that DOES NOT END IN \n -- this will be added automatically by add_header().
     file : str
      file that will be re-written
-    
+
     '''
     with open(file, "r+") as f:
         #Read complete data of CSV file
@@ -408,38 +409,38 @@ def add_errors(combined, combined_base, use_g_to_v=False, xs=None, es=None):
         xs = ['BTmag', 'VTmag', 'numax', 'dnu', 'TEFF_COR', 'A_V', 'jmag', 'hmag', 'kmag', 'FE_H_ADOP_COR', 'jmag', 'hmag', 'kmag']
         # their error columns
         es = ['e_BTmag', 'e_VTmag', 'numax_sig', 'dnu_sig', 'TEFF_COR_ERR', 'e_A_V', 'e_jmag', 'e_hmag', 'e_kmag', 'FE_H_ADOP_COR_ERR', 'e_jmag', 'e_hmag', 'e_kmag']
-    
+
     N = len(combined)
     # JCZ 290317
     # don't need to copy it
     # _combined = combined.copy()
     for x,e in zip(xs, es):
-        
+
         try:
             combined[x] = combined_base[x] + np.random.normal(loc=0., scale=combined_base[e], size=N)
         except ValueError:
             print('encountered ValueError for {} item.'.format(x))
     return combined
 
-  
+
 # def incremental_std(arr):
-#     # incrementally calculated std by way of keeping track of 
+#     # incrementally calculated std by way of keeping track of
 #     # meansq : \sum_i \langle x_i \rangle ^2
 #     # sqmean : \sum_i \langle x_i^2 \rangle
 #     # and then use
 #     # \sigma = \sqrt{sqmean - meansq}
 
-    
+
 #     std = []
 #     meansq = 0.
 #     sqmean = 0.
 #     c = 0.
-    
+
 #     for j in range(n_bins):
 #         # c += 1.
 #         # meansq[j+offset] = meansq[j+offset]*(c-1.)/c + np.sum(amps[stride*j:-1:onewrap])/c
 #         # sqmean[j+offset] = sqmean[j+offset]*(c-1.)/c + np.sum(amps[stride*j:-1:onewrap]**2)/c
-#         pass    
+#         pass
 #     std = np.sqrt(np.array(sqmean - meansq))
 #     return 9999
 
@@ -536,13 +537,13 @@ def delete_func(x, y=None, ind=False, fill=None, full_ind=False, f1=lambda x: Fa
         if ind:
             return a
         x[a] = fill
-        
+
         if y is not None:
             y[a] = fill
             return (x, y)
         else:
             return x
-        
+
 
     if y is not None:
         a = np.where((~f1(y)) & (~f2(y)))[0]
@@ -576,13 +577,13 @@ def delete_inf_nan(x, y=None, ind=False, fill=None, full_ind=False):
         if ind:
             return a
         x[a] = fill
-        
+
         if y:
             y[a] = fill
             return (x, y)
         else:
             return x
-        
+
 
     if y:
         a = np.where((~np.isinf(y)) & (~np.isnan(y)))[0]
@@ -633,7 +634,7 @@ def smooth(raw, w, type='boxcar'):
        w is the FWHM of the triangle
       boxcar:
        w is the width of the boxcar - 2
-     
+
     """
 
     N = raw.shape[0]
@@ -661,17 +662,17 @@ def smooth(raw, w, type='boxcar'):
 
             w_i[i] = (b - 2*np.abs(center - i))/b
 
-        
+
     for ind in inds:
 
         sm[ind] = np.sum(w_i*raw[ind - (w+1)/2 : ind + (w+1)/2+1])/np.sum(w_i)
 
-        
+
 
     return sm
 
 def perc2sigma(perc):
-    '''                                                                                                               
+    '''
     convert percent to sigma, assuming normality
     '''
     from scipy import stats
@@ -683,7 +684,7 @@ def sigma_to_percent(sigma):
     '''
     if 'norm' not in imports():
         import scipy.stats
-        
+
     return (scipy.stats.norm.cdf(sigma)*2.) - 1.0
 
 def sig_diff(x, y, xerr, yerr):
