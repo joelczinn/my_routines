@@ -41,6 +41,145 @@ class empty(object):
     def __init__(self):
         pass
 
+
+def process_one(file, verbose=False, kepler=False, drop_duplicates=True, match_on='epic', sep=None, drop_no_epic=True, make_index=False):
+    '''
+    read in the table and rename the file column to make it 'EPIC' so that this can be later matched on.
+    Inputs
+    [ make_index : bool ]
+     If True, will make epic to be the index of the dataframe.Default False. NOT COMPATIBLE YE TWTH COMBINE_TABLES, SO IT'S CURRENTLY NOT EVEN POSSIBLE FOR THIS TO BE DONE FROM A CALL TO COMBINE_TABLES. WOULD HAVE TO MANUALLY CHANGE THE COMBINE_TABLES CODE TO MAKE THAT POSOSIBLE. !!!
+    [ drop_no_epic : bool ]
+     if True, will not return rows for which no EPIC could be found.
+    
+    '''
+    # put the whitespace separator last in case there are issues with some columns not being filled in
+    # JCZ 221017
+    # added nested try/except structure
+    if sep is None:
+        try:
+            one = pd.read_table(file, comment='#', sep='\s+', header=0)
+            if len(one.keys()) > 1:
+                if verbose:
+                    print('{} read successfully'.format(file))
+            elif len(one.keys()) == 1:  
+                one = pd.read_table(file, comment='#', sep=',', header=0)
+            elif len(one.keys()) == 1:
+                one = pd.read_table(file, comment='#', sep='\|', header=0)
+            else:
+                print('{} could not be read using , | or whitespace delimiters'.format(file))
+
+        except:
+            try:
+                one = pd.read_table(file, comment='#', sep=',', header=0)
+                if len(one.keys()) > 1:
+                    if verbose:
+                        print('{} read successfully'.format(file))
+                elif len(one.keys()) == 1:
+                    one = pd.read_table(file, comment='#', sep='\|', header=0)
+                else:
+                    print('{} could not be read using , | or whitespace delimiters'.format(file))
+            except:
+                one = pd.read_table(file, comment='#', sep='\|', header=0)
+                if len(one.keys()) > 1:
+                    if verbose:
+                        print('{} read successfully'.format(file))
+                else:
+                    print('{} could not be read using , | or whitespace delimiters'.format(file))
+
+            
+                
+    else:
+        try:
+            one = pd.read_table(file, comment='#', sep=sep, header=0)
+        except:
+            print('{} could not be read using the \'{}\' delimiter'.format(file,sep))
+    # JCZ 070317
+    # added this as an option to be kepler-friendly or not. jie's KICs don't prepend 00, so there are issues...
+    
+    if kepler:
+        func = lambda x : (re.search('([0-9]{6,10})', x).group(1))
+    else:
+        func = lambda x : (re.search('([0-9]{6,10})', x).group(1))
+
+    if verbose:
+        print('found the following keys:')
+        print(one.keys())
+    if match_on == 'epic' or match_on == 'epic_orig':
+        found = False
+    else:
+        found = True
+    # JCZ 120317
+    # aded kepid to deal with MAST files without having to rename the KIC col
+    # JCZ 071118
+    # 'epic' HAS TO BE FIRST !!!
+
+    for k in ['epic', 'file', 'filename', 'EPIC', 'KICID', 'ID', 'KIC', 'KID', 'files', 'kepid', 'epic_orig','Kepler_ID']:
+        if k in one.keys() and found is False:
+            # now cut on the pipeline_rating:
+            one['__epic_orig'] = one[k].copy()
+            try:
+                one[k] = one[k].astype(int)
+            except:
+                pass
+            if ((one[k]).dtype != 'int64' and (one[k]).dtype != 'float64') and found is False:
+                
+                one[k] = one[k].apply(func).astype(int)
+            # merge one and pipeline output table (flags_df) so that if they are different sizes, one = one[one['pipeline_rating'] > 0] will work
+            # JCZ 071118
+            # added k != 'epic', because otherwise there will be two epic columns
+            if found is False and k != 'epic':
+                one = one.rename(columns={k:'epic'})
+            # JCZ 040317
+            # added because will have two epic_orig cols if epic and epic_orig are already present in table
+            if 'epic_orig' in one.keys():
+                one = one.rename(columns={'epic_orig':'epic_orig_orig'})
+            one = one.rename(columns={'__epic_orig':'epic_orig'})
+            print(one.keys())
+
+            found = True
+    if not found:
+        if verbose:
+            print('couldnt find a column named file epic or filename so assuming the first unnamed column is the correct one. assuming no header in the input file')
+        one = pd.read_table(file, comment='#', sep='\s+|,', engine='python', header=None)
+        one = one.convert_objects(convert_numeric=True)
+        print(one)
+
+        one['epic_orig'] = one[0].copy()
+        if not((one[0]).dtype == 'int64' or one[0].dtype == 'float64'):
+            one[0] = one[0].astype(str).apply(func).astype(int)
+        if one[0].dtype == 'float64':
+            one[0] = one[0].astype(int)
+        one = one.rename(columns={0:'epic'})
+        one['epic'] = one['epic'].__array__().astype(int)
+    # except:
+        
+    #     if 'epic' not in one.keys():
+        
+    #         print 'could not find file or EPIC column for {}...'.format(file)
+    #     # if epic does exist as a field then it must be converted to an int
+    #     else:
+    #         print 'found epic field -- converting to int'
+    #         one['epic'] = one['epic'].astype(int)
+    # JCZ 290916
+    # drop any duplicates.
+
+    if drop_duplicates:
+        if verbose:
+            print('dropping duplicates')
+        one = one.drop_duplicates(subset=[match_on])
+    # JCZ 151117
+    # drop any objects that don't have an EPIC
+    if drop_no_epic:
+        one = one.dropna(subset=[match_on])
+
+        # print one[match_on]
+    if one[match_on].dtype == 'float64':
+        one[match_on] = one[match_on].astype(int)
+    if make_index:
+        one.set_index(match_on, inplace=True, drop=False)
+    return one
+
+    
 def fits2pd(fitsfile):
     '''
     given an inputs fits file, will return pandas dataframe of that data.
@@ -103,6 +242,17 @@ def radeclonlat(ra, dec):
     c = SkyCoord(frame=ICRS, ra=ra*u.degree, dec=dec*u.degree, distance=1000*u.kpc)
     c = c.transform_to(frame=HeliocentricTrueEcliptic)
     return c.lon.value, c.lat.value
+
+def lonlatellb(lon, lat):
+    '''
+    converts into ecliptic lon and lat into galactic ell and b
+    '''
+    from astropy.coordinates import ICRS, Galactic, FK4, FK5, HeliocentricTrueEcliptic
+    from astropy.coordinates import SkyCoord
+    import astropy.units as u
+    c = SkyCoord(frame=HeliocentricTrueEcliptic, lon=lon*u.degree, lat=lat*u.degree, distance=1000*u.kpc)
+    c = c.transform_to(frame=Galactic)
+    return c.l.value, c.b.value
 
 def plot_grid(funcs, args, kwds, labels, xlabel, ylabel, n_rows=3, n_cols=3):
     '''
