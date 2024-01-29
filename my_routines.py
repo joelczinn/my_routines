@@ -3,6 +3,8 @@ __version__ = "0.7"
 '''
 (C) Joel C. Zinn 2018
 zinn.44@osu.edu
+0.8
+--- added a routine that will give coordinates of a plate from leavitt's catalogue.
 0.1
 -- added imports() to check what and what has not been imported
 -- then use this in new function sigma_to_percent which converts z-scores into percentages.
@@ -40,7 +42,142 @@ import glob
 class empty(object):
     def __init__(self):
         pass
+from scipy import stats, integrate
+import numpy as np
 
+def jhk2kepmag(J, H, K):
+    '''
+    from Huber+ 2016 ultimately from Howell+ 2012
+    Inputs
+     J : float or ndarray
+     H : float or ndarray
+     K : float or ndarray
+    Outputs
+     kepmag : color-based kepmag
+    for things outside the vlaid color range, returns np.nan
+
+    '''
+
+    if not ((np.isscalar(J) and np.isscalar(H) and np.isscalar(K)) or
+            (not np.isscalar(J) and not np.isscalar(H) and not np.isscalar(K))):
+        raise Exception('J, H, & K must all either be scalars or all arrays')
+    if np.isscalar(J):
+        
+        J = np.array([J])
+        H = np.array([H])
+        K = np.array([K])
+    if not (len(J) == len(H) == len(K)):
+        raise Exception('J H and K must all be the same size')
+    x = J-K    
+    dwarf = ~((J - H > 0.75)*(H - K > 0.1))
+    
+    kepmag = 0.42443603 + 3.7937617*x -  2.3267277*x**2 + 1.460255*x**3 + K
+    kepmag[dwarf] = 0.314377 + 3.85667*x + 3.176111*x**2  -  25.3126*x**3 + 40.7221*x**4  -  19.2112*x**5 + K
+
+    
+    
+    return kepmag
+
+
+
+def g2tmag(G, BP, RP):
+    '''
+    from Stassun+ 2019
+    Inputs
+     G : float or ndarray
+     BP : float or ndarray
+     RP : float or ndarray
+    Outputs
+     tmag : color-based tmag
+    for things outside the vlaid color range, returns np.nan
+    Note that it is strictly valid only for deredenned photometry. Also there seems to be no distinctino between dwarf and giant, so this is not a very very valid transformation...
+    '''
+
+    if not ((np.isscalar(G) and np.isscalar(BP) and np.isscalar(RP)) or
+            (not np.isscalar(G) and not np.isscalar(BP) and not np.isscalar(RP))):
+        raise Exception('G, BP, & RP must all either be scalars or all arrays')
+    if np.isscalar(G):
+        
+        G = np.array([G])
+        BP = np.array([BP])
+        RP = np.array([RP])
+    if not (len(G) == len(BP) == len(RP)):
+        raise Exception('G BP and RP must all be the same size')
+    x = BP-RP
+    good = (x > -0.2)*(x < 3.5)
+    tmag = BP*np.nan
+    tmag[good] = G - 0.00522555*x**3 + 0.0891337*x**2 - 0.633923*x + 0.0324473
+    
+    return tmag
+
+
+def plate():
+    '''
+    this code is to get the positions of the Cepheids from the table in Leavitt 1912
+    '''
+    import astropy.units as u
+    from astropy.coordinates import ICRS, SkyCoord, FK4
+    coords = ["0 50 0.9 -73 07 00"]
+    unit=(u.hourangle, u.deg)
+    gc = SkyCoord(coords[0], frame=FK4, equinox='B1900', unit=unit)
+    offsetra = 1606 - 12752
+    offsetdec = 3218 - 10393
+
+
+    offsetra = 13640 - 12752
+    offsetdec = 10519 - 10393
+
+    gc = gc.spherical_offsets_by(offsetra*u.arcsec, offsetdec*u.arcsec)
+    print(gc)
+    print(gc.transform_to(FK4(equinox='J2000')).ra.to_string(unit=u.hour))
+    print(gc.transform_to(FK4(equinox='J2000')).dec.to_string(unit=u.degree, sep=('deg', 'm', 's')))
+
+
+def dist(x, pdf, n):
+    '''
+    returns a random draw from the pdf that is passed. note that this involves discretizing the function along x, so 
+    if it is necessary to get a certain resolution, make sure x is reflective of that. will generate random draws from the 
+    center of the bins of x, in other words.
+    Inputs
+    x : ndarray
+    pdf : ndarray
+     the probability density, but it doesn't have to be normalized. this is done in dist()
+    n : int
+     how many random draws to return
+     
+    Outputs
+    rand : ndarray(n)
+     random draws from the pdf.
+     
+    '''
+    if len(x) <= 1:
+        raise Exception("x needs to have at least 2 entries")
+    if len(x) != len(pdf):
+        raise Exception("x and pdf have to have the same length")
+
+    norm = integrate.cumulative_trapezoid(pdf, x)
+    
+    p = np.hstack((norm[0],np.diff(norm)))/norm[-1]
+    
+    custm = stats.rv_discrete(name='custm', values=(np.arange(len(x)-1), p))
+    # return random draws from the center of the bin
+    inds = custm.rvs(size=int(n))
+    rand = x[inds+1] + np.diff(x)[inds]/2.
+    return rand
+        # for testing
+        # import pylab as plt
+        # masses = np.array([1.1,1.2,1.3,1.4,1.5])
+        # pdf = np.array([0.1,0.2,1.0,2.0,0.1])
+        # ndown = 20
+        # nup = 10000
+        # m_min = 0.9
+        # m_max = 3.0
+        # masses = np.hstack((np.linspace(0,m_min, ndown), np.linspace(m_min, m_max, nup)))
+        # pdf = np.hstack((np.zeros(ndown), np.ones(nup)))
+        # rand = dist(masses, pdf, 1000000)
+        # plt.clf()
+        # plt.hist(rand, bins=50)
+        # plt.show()
 
 def process_one(file, verbose=False, kepler=False, drop_duplicates=True, match_on='epic', sep=None, drop_no_epic=True, make_index=False):
     '''

@@ -134,7 +134,7 @@ def integrate_w_grid(_func, lim0, lim1, args=[], points=None, limit=None):
     plx = args[1]
     plx_err = args[2]
     # desired number of resultion elements in the +/- 2 plx_err region
-    N_res = 1000.0
+    N_res = 10000.0
     lower = np.log10(1./(plx+2.0*plx_err))
 
     func = _func
@@ -224,7 +224,7 @@ def draw(L, _plx, _plx_err, _r_lim, debug=False, u=None):
             _u = np.random.uniform(0.0,1.0)
         else:
             _u = u
-        if plx_err/plx > 0.1 or plx <= 0.0: # use the posterior method because the errors are not going to be very symmetric in distance space
+        if plx_err/plx > 0.0005 or plx <= 0.0: # use the posterior method because the errors are not going to be very symmetric in distance space
             
             # u = 0.9
             integrator = integrate_w_grid
@@ -262,7 +262,9 @@ def draw(L, _plx, _plx_err, _r_lim, debug=False, u=None):
             # this really does not work... even with the help of the jacobian.
             # print 'Brent search distance:'
             # print np.exp(r_b)
+            # JCZ 080719
             # r_bfgs = minimize(function, np.log([1./plx]), bounds=[(r_lim[0], r_lim[1])], jac=jac_function, method='L-BFGS-B').x[0]
+            # r_b = r_bfgs
             # print 'L-BFGS-B distance:'
             # print np.exp(r_bfgs)
 
@@ -275,7 +277,7 @@ def draw(L, _plx, _plx_err, _r_lim, debug=False, u=None):
                 upper = lower + 0.5
             else:
                 upper = np.log10(1./(plx-4.0*plx_err))
-            x = np.logspace(lower, upper, num=500)
+                x = np.logspace(lower, upper, num=500)
             # normalize the mode of the probability density to be 1.0
             logr_mode = np.log(main(L,plx, plx_err))
             norm = p(logr_mode, L, plx, plx_err)/np.exp(logr_mode)
@@ -290,7 +292,8 @@ def draw(L, _plx, _plx_err, _r_lim, debug=False, u=None):
                     # this is the derivative of function(_x) (i.e., it is just the actual probability density, with a sign switch when function(_x) = u
                     plt.scatter(_x, jac_function(_x))
                 # this is the r for which F(r) = u using L-BFGS-B method
-                # plt.axvline(r_bfgs, label='L-BFGS-B', color='red')
+                r_bfgs = minimize(function, np.log([1./plx]), bounds=[(r_lim[0], r_lim[1])], jac=jac_function, method='L-BFGS-B').x[0]
+                plt.axvline(r_bfgs, label='L-BFGS-B', color='red')
                 # this is the r for which F(r) = u using Brent search method
                 plt.axvline(r_b, label='Brent', color='gold')
                 # this is the mode from Bailer-Jones+ 2016
