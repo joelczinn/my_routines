@@ -28,7 +28,9 @@ import numpy as np
 import corner
 class MCMC(object):
     
-    def __init__(self, debug=False):
+    def __init__(self, *args, **kwargs):
+        debug=kwargs.pop('debug', False)
+        self.plot_dir = kwargs.pop('plot_dir', 'plots/')
         if debug:
             # JCZ 060818
             # was 10
@@ -228,6 +230,6 @@ class MCMC(object):
             fig.subplots_adjust(bottom=0.2)
             fig.subplots_adjust(left=0.2)
 
-            fig.savefig('plots/' + self.problem+'_mcmc.'+ext, format=ext)
+            fig.savefig(self.plot_dir + self.problem+'_mcmc.'+ext, format=ext)
         if show:
             plt.show(); plt.ion()
